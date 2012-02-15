@@ -437,6 +437,7 @@ struct input_keymap_entry {
 
 #define KEY_WIMAX		246
 #define KEY_RFKILL		247	/* Key that controls all radios */
+#define KEY_MICMUTE		248	/* toggle microphone mute */
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
