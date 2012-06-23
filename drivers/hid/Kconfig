@@ -157,6 +157,19 @@ config HID_KENSINGTON
 	---help---
 	Support for Kensington Slimblade Trackball.
 
+config HID_LENOVO_TPKBD
+	tristate "Lenovo ThinkPad USB Keyboard with TrackPoint"
+	depends on USB_HID
+	select NEW_LEDS
+	select LEDS_CLASS
+	---help---
+	Support for the Lenovo ThinkPad USB Keyboard with TrackPoint.
+
+	Say Y here if you have a Lenovo ThinkPad USB Keyboard with TrackPoint
+	and would like to use device-specific features like changing the
+	sensitivity of the trackpoint, using the microphone mute button or
+	controlling the mute and microphone mute LEDs.
+
 config HID_LOGITECH
 	tristate "Logitech" if EMBEDDED
 	depends on USB_HID
