@@ -22,7 +22,10 @@
 
 #include "hid-ids.h"
 
-/* This is only used for the trackpoint part of the driver, hence _tp */
+#define FEATURE_COMPACT_SENSITIVITY 0x02
+#define FEATURE_COMPACT_SCROLLING   0x09
+
+/* This is only used for the trackpoint part of the driver, hence _pointer */
 struct tpkbd_data_pointer {
 	int led_state;
 	struct led_classdev led_mute;
@@ -35,6 +38,11 @@ struct tpkbd_data_pointer {
 	int press_speed;
 };
 
+struct tpkbd_compact_data_pointer {
+	int sensitivity;
+	int scrolling;
+};
+
 #define map_key_clear(c) hid_map_usage_clear(hi, usage, bit, max, EV_KEY, (c))
 
 static int tpkbd_input_mapping(struct hid_device *hdev,
@@ -43,10 +51,13 @@ static int tpkbd_input_mapping(struct hid_device *hdev,
 {
 	struct usbhid_device *uhdev;
 
-	uhdev = (struct usbhid_device *) hdev->driver_data;
-	if (uhdev->ifnum == 1 && usage->hid == (HID_UP_BUTTON | 0x0010)) {
-		map_key_clear(KEY_MICMUTE);
-		return 1;
+	if (hdev->product == USB_DEVICE_ID_LENOVO_TPKBD) {
+		uhdev = (struct usbhid_device *) hdev->driver_data;
+		if (uhdev->ifnum == 1 &&
+				usage->hid == (HID_UP_BUTTON | 0x0010)) {
+			map_key_clear(KEY_MICMUTE);
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -70,6 +81,28 @@ static int tpkbd_features_set(struct hid_device *hdev)
 
 	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
 	return 0;
+}
+
+static int tpkbd_compact_set_feature(struct hid_device *hdev,
+		const u8 values[8])
+{
+	int i;
+	struct hid_report *report;
+
+	report = hdev->report_enum[HID_FEATURE_REPORT].report_id_hash[19];
+	for (i = 0; i < 8; i++)
+		report->field[0]->value[i] = values[i];
+
+	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
+	return 0;
+}
+
+static int tpkbd_compact_set_feature_simple(struct hid_device *hdev,
+		u8 feature,
+		u8 value)
+{
+	u8 values[8] = { feature, value };
+	return tpkbd_compact_set_feature(hdev, values);
 }
 
 static ssize_t pointer_press_to_select_show(struct device *dev,
@@ -250,6 +283,65 @@ static ssize_t pointer_press_speed_store(struct device *dev,
 	return count;
 }
 
+static ssize_t pointer_compact_sensitivity_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct tpkbd_compact_data_pointer *data_pointer = hid_get_drvdata(hdev);
+
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+		data_pointer->sensitivity);
+}
+
+static ssize_t pointer_compact_sensitivity_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf,
+		size_t count)
+{
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct tpkbd_compact_data_pointer *data_pointer = hid_get_drvdata(hdev);
+	int value;
+
+	if (kstrtoint(buf, 10, &value) || value < 1 || value > 9)
+		return -EINVAL;
+
+	data_pointer->sensitivity = value;
+	tpkbd_compact_set_feature_simple(hdev,
+			FEATURE_COMPACT_SENSITIVITY, value);
+
+	return count;
+}
+static ssize_t pointer_compact_scrolling_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct tpkbd_compact_data_pointer *data_pointer = hid_get_drvdata(hdev);
+
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+		data_pointer->scrolling);
+}
+
+static ssize_t pointer_compact_scrolling_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf,
+		size_t count)
+{
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct tpkbd_compact_data_pointer *data_pointer = hid_get_drvdata(hdev);
+	int value;
+
+	if (kstrtoint(buf, 10, &value) || value < 0 || value > 1)
+		return -EINVAL;
+
+	data_pointer->scrolling = value;
+	tpkbd_compact_set_feature_simple(hdev,
+			FEATURE_COMPACT_SCROLLING, value);
+
+	return count;
+}
+
 static struct device_attribute dev_attr_pointer_press_to_select =
 	__ATTR(press_to_select, S_IWUSR | S_IRUGO,
 			pointer_press_to_select_show,
@@ -280,6 +372,16 @@ static struct device_attribute dev_attr_pointer_press_speed =
 			pointer_press_speed_show,
 			pointer_press_speed_store);
 
+static struct device_attribute dev_attr_pointer_compact_sensitivity =
+	__ATTR(sensitivity, S_IWUSR | S_IRUGO,
+			pointer_compact_sensitivity_show,
+			pointer_compact_sensitivity_store);
+
+static struct device_attribute dev_attr_pointer_compact_scrolling =
+	__ATTR(scrolling, S_IWUSR | S_IRUGO,
+			pointer_compact_scrolling_show,
+			pointer_compact_scrolling_store);
+
 static struct attribute *tpkbd_attributes_pointer[] = {
 	&dev_attr_pointer_press_to_select.attr,
 	&dev_attr_pointer_dragging.attr,
@@ -290,8 +392,18 @@ static struct attribute *tpkbd_attributes_pointer[] = {
 	NULL
 };
 
+static struct attribute *tpkbd_compact_attributes_pointer[] = {
+	&dev_attr_pointer_compact_sensitivity.attr,
+	&dev_attr_pointer_compact_scrolling.attr,
+	NULL
+};
+
 static const struct attribute_group tpkbd_attr_group_pointer = {
 	.attrs = tpkbd_attributes_pointer,
+};
+
+static const struct attribute_group tpkbd_compact_attr_group_pointer = {
+	.attrs = tpkbd_compact_attributes_pointer,
 };
 
 static enum led_brightness tpkbd_led_brightness_get(
@@ -405,6 +517,39 @@ err:
 	return ret;
 }
 
+static int tpkbd_compact_probe_tp(struct hid_device *hdev)
+{
+	struct tpkbd_compact_data_pointer *data_pointer;
+
+	/* Validate required reports. */
+	if (!hid_validate_values(hdev, HID_FEATURE_REPORT, 19, 0, 8))
+		return -ENODEV;
+
+	if (sysfs_create_group(&hdev->dev.kobj,
+				&tpkbd_compact_attr_group_pointer)) {
+		hid_warn(hdev, "Could not create sysfs group\n");
+	}
+
+	data_pointer = kzalloc(sizeof(struct tpkbd_compact_data_pointer),
+			GFP_KERNEL);
+	if (data_pointer == NULL) {
+		hid_err(hdev, "Could not allocate memory for driver data\n");
+		return -ENOMEM;
+	}
+
+	data_pointer->sensitivity = 5;
+	data_pointer->scrolling = 0;
+
+	hid_set_drvdata(hdev, data_pointer);
+
+	tpkbd_compact_set_feature_simple(hdev,
+			FEATURE_COMPACT_SENSITIVITY, data_pointer->sensitivity);
+	tpkbd_compact_set_feature_simple(hdev,
+			FEATURE_COMPACT_SCROLLING,   data_pointer->scrolling);
+
+	return 0;
+}
+
 static int tpkbd_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
@@ -426,7 +571,16 @@ static int tpkbd_probe(struct hid_device *hdev,
 	uhdev = (struct usbhid_device *) hdev->driver_data;
 
 	if (uhdev->ifnum == 1) {
-		ret = tpkbd_probe_tp(hdev);
+		switch (id->product) {
+		case USB_DEVICE_ID_LENOVO_TPKBD:
+			ret = tpkbd_probe_tp(hdev);
+			break;
+		case USB_DEVICE_ID_LENOVO_TPKBD_COMPACT:
+			ret = tpkbd_compact_probe_tp(hdev);
+			break;
+		default:
+			ret = -EINVAL;
+		}
 		if (ret)
 			goto err_hid;
 	}
@@ -466,7 +620,10 @@ static void tpkbd_remove(struct hid_device *hdev)
 }
 
 static const struct hid_device_id tpkbd_devices[] = {
-	{ HID_USB_DEVICE(USB_VENDOR_ID_LENOVO, USB_DEVICE_ID_LENOVO_TPKBD) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_LENOVO,
+			USB_DEVICE_ID_LENOVO_TPKBD) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_LENOVO,
+			USB_DEVICE_ID_LENOVO_TPKBD_COMPACT) },
 	{ }
 };
 
