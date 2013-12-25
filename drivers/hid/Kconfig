@@ -252,7 +252,8 @@ config HID_LENOVO_TPKBD
 	select NEW_LEDS
 	select LEDS_CLASS
 	---help---
-	Support for the Lenovo ThinkPad USB Keyboard with TrackPoint.
+	Support for the Lenovo ThinkPad USB Keyboard with TrackPoint
+	and the Lenovo ThinkPad Compact USB Keyboard with TrackPoint.
 
 	Say Y here if you have a Lenovo ThinkPad USB Keyboard with TrackPoint
 	and would like to use device-specific features like changing the
